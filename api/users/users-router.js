@@ -1,10 +1,15 @@
 const express = require('express');
 
-// You will need `users-model.js` and `posts-model.js` both
-// The middleware functions also need to be required
 
-const Users = require('./users/users-model.js')
-const Posts = require('./posts/posts.model.js')
+const {
+  validateUserId,
+  validateUser,
+  validatePost,
+ } = require('../middleware/middleware')
+
+const User = require('./users-model')
+const Post = require('../posts/posts-model')
+
 const router = express.Router();
 
 // router.get('/', (req, res) => {
@@ -12,28 +17,34 @@ const router = express.Router();
 // });
 
 router.get('/', (req, res, next) => {
-  Users.find(req.query)
-    .then(users => {
-      res.status(200).json(hubs);
-    })
-    .catch(error => {
-      next({
-        custom: 'problem getting users',
-        message: error.message,
-      });
-    });
-});
+  User.get()
+  .then(users => {
+    res.json(users)
+  })
+  .catch(next)
+})
+  // Users.find(req.query)
+  //   .then(users => {
+  //     res.status(200).json(hubs);
+  //   })
+  //   .catch(error => {
+  //     next({
+  //       custom: 'problem getting users',
+  //       message: error.message,
+  //     });
+  //   });
+
 
 // router.get('/:id', (req, res) => {
 //   // RETURN THE USER OBJECT
 //   // this needs a middleware to verify user id
 // });
 
-router.get('/:id', checkUserId, (req, res, next) => {
+router.get('/:id', validateUserId, (req, res, next) => {
   res.json(req.user);
 });
 
-router.post('/', checkUserPayload,(req, res, next) => {
+router.post('/', validateUser, (req, res, next) => {
   Users.add(req.body)
     .then(user => {
       res.status(201).json(user);
@@ -47,12 +58,17 @@ router.post('/', checkUserPayload,(req, res, next) => {
 //   // this needs a middleware to check that the request body is valid
 // });
 
-router.post('/', checkUserPayload,(req, res, next) => {
-  Users.add(req.body)
-    .then(user => {
-      res.status(201).json(user);
-    })
-    .catch(next);
+router.post('/',(req, res, next) => {
+  User.insert({ name: req.name})
+  .then(newUser => {
+    res.status(201).json(newUser)
+  })
+  .catch(next)
+  // Users.add(req.body)
+  //   .then(user => {
+  //     res.status(201).json(user);
+  //   })
+  //   .catch(next);
 });
 
 
@@ -62,14 +78,15 @@ router.post('/', checkUserPayload,(req, res, next) => {
 //   // and another middleware to check that the request body is valid
 // });
 
-router.put('/:id', checkUserId, checkUserPayload, (req, res, next) => {
-  Users.update(req.params.id, req.body)
-    .then(user => {
-      res.status(200).json(user);
-    })
-    .catch(error => {
-      next(error)
-    });
+router.put('/:id', validateUserId, validateUser, (req, res, next) => {
+  Users.update(req.params.id, { name: req.name })
+  .then(() => {
+    return User.getById(req.params.id)
+  })
+  .then(user => {
+    res.json(user)
+  })
+  .catch(next)
 });
 
 // router.delete('/:id', (req, res) => {
@@ -77,12 +94,13 @@ router.put('/:id', checkUserId, checkUserPayload, (req, res, next) => {
 //   // this needs a middleware to verify user id
 // });
 
-router.delete('/:id', checkUserId, (req, res, next) => {
-  Users.remove(req.params.id)
-    .then(() => {
-      res.status(200).json({ message: 'The user has been nuked' });
-    })
-    .catch(next);
+router.delete('/:id', validateUserId, async (req, res, next) => {
+  try {
+    await User.remove(req.params.id)
+    res.json(req.user)
+  } catch (err) {
+    next(err)
+  }
 });
 
 // router.get('/:id/posts', (req, res) => {
@@ -90,14 +108,13 @@ router.delete('/:id', checkUserId, (req, res, next) => {
 //   // this needs a middleware to verify user id
 // });
 
-router.get('/:id/posts', (req, res, next) => {
-  Users.findUserPosts(req.params.id)
-    .then(posts => {
-      res.status(200).json(posts);
-    })
-    .catch(error => {
-      next(error)
-    });
+router.get('/:id/posts', validateUserId, async (req, res, next) => {
+  try {
+    const result = await User.getUserPosts(req.params.id)
+    res.json(result)
+  } catch (err) {
+    next (err)
+  }
 });
 
 // router.post('/:id/posts', (req, res) => {
@@ -106,14 +123,24 @@ router.get('/:id/posts', (req, res, next) => {
 //   // and another middleware to check that the request body is valid
 // });
 
-router.post('/:id/posts', (req, res, next) => {
-  const postInfo = { ...req.body, user_id: req.params.id };
-
-  Posts.add([post]Info)
-    .then(post => {
-      res.status(210).json(post);
-    })
-    .catch(next);
+router.post('/:id/posts', validateUserId, validatePost, async (req, res, next) => {
+ try {
+   const result = await Post.insert({ 
+     user_id: req.params.id,
+     text: req.text,
+   })
+   res.status(201).json(result)
+ } catch (err) {
+   next(err)
+ }
 });
+
+router.use((err, req, res, next) => {
+  res.status(err.status || 500).json({ 
+    customMessage: 'something tragic inside posts router happened',
+    message: err.message,
+    stack: err.stack,
+  })
+})
 
 module.exports = router;
